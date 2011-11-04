@@ -18,6 +18,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency(%q<rspec-core>, ['~> 2.7.0'])
   s.add_development_dependency(%q<rspec-mocks>, ['~> 2.7.0'])
   s.add_development_dependency(%q<database_cleaner>, ['>= 0.5.0'])
+  s.add_development_dependency(%q<rake>, ['>= 0.8.7'])
 
   s.files         = `git ls-files`.split("\n")
   s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")
