@@ -1,5 +1,8 @@
 = Multitenant
 
+{<img src="https://secure.travis-ci.org/mordaroso/multitenant-pg.png" />}[http://travis-ci.org/mordaroso/multitenant-pg]
+
+
 Build a Rails multitenancy application with PostgreSQL schemas.
 
 == Example usage
