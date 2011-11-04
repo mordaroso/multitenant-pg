@@ -1,12 +1,23 @@
 = Multitenant
 
-When building multitenant applications, never let an unscoped Model.all accidentally leak data to an unintended audience.
+Build a Rails multitenancy application with PostgreSQL schemas.
 
-== Usage
+== Example usage
 
-  class User < ActiveRecord::Base
-    belongs_to :tenant
-    belongs_to_multitenant
+  class Tenant < ActiveRecord::Base
+    set_table_name 'public.tenants'
+    validates_presence_of :schema_name
+    validates_uniqueness_of :schema_name
+
+    after_create :setup_schema
+
+    private
+      def setup_schema
+        unless Multitenant::SchemaUtils.schema_exists?(schema_name)
+          Multitenant::SchemaUtils.create_schema(schema_name)
+          Multitenant::SchemaUtils.load_schema_into_schema(schema_name)
+        end
+      end
   end
 
   Multitenant.with_tenant current_tenant do
@@ -23,10 +34,10 @@ When building multitenant applications, never let an unscoped Model.all accident
 
 * Rails 3 compatible
 * Restrict database queries to only lookup objects for the current tenant
-* Auto assign newly created objects to the current tenant
+* Utility tools for creating, migrating and accessing schemas
 
 == Contributing
- 
+
 * Check out the latest master to make sure the feature hasn't been implemented or the bug hasn't been fixed yet
 * Check out the issue tracker to make sure someone already hasn't requested it and/or contributed it
 * Fork the project
@@ -37,10 +48,10 @@ When building multitenant applications, never let an unscoped Model.all accident
 
 == Credits
 
-Lars Klevan for inspiring this project.
+Ryan Sonnek for building the multitenant gem and Guy Naor for inspiration.
 
 == Copyright
 
-Copyright (c) 2011 Ryan Sonnek. See LICENSE.txt for
+Copyright (c) 2011 Fabio Kuhn. See LICENSE.txt for
 further details.
 

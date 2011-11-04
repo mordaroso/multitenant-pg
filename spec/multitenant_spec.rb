@@ -1,44 +1,48 @@
 require 'spec_helper'
 
-ActiveRecord::Schema.define(:version => 1) do
-  create_table :companies, :force => true do |t|
-    t.column :name, :string
-  end
-
-  create_table :users, :force => true do |t|
-    t.column :name, :string
-    t.column :company_id, :integer
-  end
-
-
-  create_table :tenants, :force => true do |t|
-    t.column :name, :string
-  end
-
-  create_table :items, :force => true do |t|
-    t.column :name, :string
-    t.column :tenant_id, :integer
-  end
-end
-
 class Company < ActiveRecord::Base
   has_many :users
 end
+
 class User < ActiveRecord::Base
   belongs_to :company
-  belongs_to_multitenant :company
 end
 
 class Tenant < ActiveRecord::Base
-  has_many :items
+  set_table_name 'public.tenants'
+
+  after_create :setup_schema
+
+  def setup_schema
+    unless Multitenant::SchemaUtils.schema_exists?(schema_name)
+      Multitenant::SchemaUtils.create_schema(schema_name)
+      Multitenant::SchemaUtils.load_schema_into_schema(schema_name)
+    end
+  end
 end
-class Item < ActiveRecord::Base
-  belongs_to :tenant
-  belongs_to_multitenant
+
+module Rails
 end
 
 describe Multitenant do
-  after { Multitenant.current_tenant = nil }
+  before(:all) do
+    load File.join(File.dirname(__FILE__), '/fixtures/db/schema.rb')
+  end
+
+  before(:each) do
+    #ActiveRecord::Base.connection.schema_search_path = 'public'
+    Rails.stub(:root).and_return(File.join(File.dirname(__FILE__), 'fixtures'))
+
+    @tenant = Tenant.create(:name => 'foo', :schema_name => 'foo')
+    @tenant2 = Tenant.create(:name => 'bar', :schema_name => 'bar')
+  end
+
+  after do
+    Multitenant.current_tenant = nil;
+    Multitenant::SchemaUtils.with_all_schemas do
+      DatabaseCleaner.clean_with :truncation
+    end
+  end
 
   describe 'Multitenant.current_tenant' do
     before { Multitenant.current_tenant = :foo }
@@ -48,8 +52,8 @@ describe Multitenant do
   describe 'Multitenant.with_tenant block' do
     before do
       @executed = false
-      Multitenant.with_tenant :foo do
-        Multitenant.current_tenant.should == :foo
+      Multitenant.with_tenant @tenant do
+        Multitenant.current_tenant.should == @tenant
         @executed = true
       end
     end
@@ -66,14 +70,18 @@ describe Multitenant do
       @previous = :whatever
       Multitenant.current_tenant = @previous
       @executed = false
-      Multitenant.with_tenant :foo do
-        Multitenant.current_tenant.should == :foo
+      Multitenant.with_tenant @tenant do
+        Multitenant.current_tenant.should == @tenant
+        Multitenant::SchemaUtils.current_search_path.should == @tenant.schema_name
         @executed = true
       end
     end
+
     it 'resets current_tenant after block runs' do
       Multitenant.current_tenant.should == @previous
+      #ActiveRecord::Base.connection.schema_search_path.should == 'public'
     end
+
     it 'yields the block' do
       @executed.should == true
     end
@@ -82,61 +90,45 @@ describe Multitenant do
   describe 'Multitenant.with_tenant block that raises error' do
     before do
       @executed = false
-      lambda {
-        Multitenant.with_tenant :foo do
+      expect {
+        Multitenant.with_tenant @tenant do
           @executed = true
           raise 'expected error'
         end
-      }.should raise_error('expected error')
-    end
-    it 'clears current_tenant after block runs' do
-      Multitenant.current_tenant.should == nil
-    end
-    it 'yields the block' do
-      @executed.should == true
-    end    
-  end
+        }.to raise_error('expected error')
+      end
 
-  describe 'User.all when current_tenant is set' do
-    before do
-      @company = Company.create!(:name => 'foo')
-      @company2 = Company.create!(:name => 'bar')
+      it 'clears current_tenant after block runs' do
+        Multitenant.current_tenant.should == nil
+      end
 
-      @user = @company.users.create! :name => 'bob'
-      @user2 = @company2.users.create! :name => 'tim'
-      Multitenant.with_tenant @company do
-        @users = User.all
+      it 'yields the block' do
+        @executed.should == true
       end
     end
-    it { @users.length.should == 1 }
-    it { @users.should == [@user] }
-  end
 
-  describe 'Item.all when current_tenant is set' do
-    before do
-      @tenant = Tenant.create!(:name => 'foo')
-      @tenant2 = Tenant.create!(:name => 'bar')
+    describe 'User.all when current_tenant is set' do
+      before do
+        Multitenant.with_tenant @tenant do
+          Multitenant::SchemaUtils.current_search_path.should == @tenant.schema_name
+          @company = Company.create!(:name => 'foo')
+          @user = @company.users.create! :name => 'bob'
+        end
 
-      @item = @tenant.items.create! :name => 'baz'
-      @item2 = @tenant2.items.create! :name => 'booz'
-      Multitenant.with_tenant @tenant do
-        @items = Item.all
+        Multitenant.with_tenant @tenant2 do
+          Multitenant::SchemaUtils.current_search_path.should == @tenant2.schema_name
+          company = Company.create!(:name => 'bar')
+          user = company.users.create! :name => 'frank'
+        end
+
+        Multitenant.with_tenant @tenant do
+          Multitenant::SchemaUtils.current_search_path.should == @tenant.schema_name
+          @users = User.all
+        end
       end
-    end
-    it { @items.length.should == 1 }
-    it { @items.should == [@item] }
-  end
 
+      it { @users.length.should == 1 }
 
-  describe 'creating new object when current_tenant is set' do
-    before do
-      @company = Company.create! :name => 'foo'
-      Multitenant.with_tenant @company do
-        @user = User.create! :name => 'jimmy'
-      end
-    end
-    it 'should auto_populate the company' do
-      @user.company_id.should == @company.id
+      it { @users.should == [@user] }
     end
   end
-end

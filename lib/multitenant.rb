@@ -1,4 +1,4 @@
-require 'active_record'
+require 'multitenant/schema_utils'
 
 # Multitenant: making cross tenant data leaks a thing of the past...since 2011
 module Multitenant
@@ -7,28 +7,16 @@ module Multitenant
 
     # execute a block scoped to the current tenant
     # unsets the current tenant after execution
-    def with_tenant(tenant, &block)
+    def with_tenant(tenant = nil, &block)
       previous_tenant = Multitenant.current_tenant
-      Multitenant.current_tenant = tenant
-      yield
+      Multitenant.current_tenant = tenant if tenant
+
+      SchemaUtils.with_schema(Multitenant.current_tenant.schema_name) do
+        yield
+      end
+
     ensure
       Multitenant.current_tenant = previous_tenant
     end
   end
-
-  module ActiveRecordExtensions
-    # configure the current model to automatically query and populate objects based on the current tenant
-    # see Multitenant#current_tenant
-    def belongs_to_multitenant(association = :tenant)
-      reflection = reflect_on_association association
-      before_validation Proc.new {|m|
-        return unless Multitenant.current_tenant
-        m.send "#{association}=".to_sym, Multitenant.current_tenant
-      }, :on => :create
-      default_scope lambda {
-        where({reflection.foreign_key => Multitenant.current_tenant.id}) if Multitenant.current_tenant
-      }
-    end
-  end
 end
-ActiveRecord::Base.extend Multitenant::ActiveRecordExtensions

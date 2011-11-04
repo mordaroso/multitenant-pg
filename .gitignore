@@ -2,6 +2,7 @@
 .bundle
 Gemfile.lock
 pkg/*
+.DS_Store
 
 # test files
 spec/*.log

@@ -1,3 +1,7 @@
-sqlite:
-  adapter: sqlite3
-  database: spec/multitenant.sqlite3
+test:
+  adapter: postgresql
+  host: localhost
+  encoding: utf8
+  template: template0
+  schema: public
+  database: multitenant_test
